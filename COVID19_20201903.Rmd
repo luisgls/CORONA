@@ -1,0 +1,339 @@
+---
+title: "COVID19"
+author: "Luis Zapata"
+date: "3/19/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list=ls())
+library(tidyverse)
+library(ggstatsplot)
+library(ggpubr)
+library(gtsummary)
+library(correlation)
+library(MASS)
+library(Hmisc)
+library(car)
+library(psych)
+library(sjPlot)
+library(leaps)
+library(ggcor)
+library(dplyr)
+library(gtsummary)
+setwd("~/Dropbox (Personal)/Projects/CORONA/analysis_git/")
+
+```
+## Abstract
+
+A novel coronavirs SARS-CoV-2 has impacted the world creating a global pandemic. Up to date (March 19th 2020), 242713 confirmed cases with 9843 fatalities has been reported, bringing the global case fatality rate (CFR) around 4%. Multiple reports have focused on modelling the future of the viral infection, the source of origin, or the genetic differences between the strains. However, to our knowledge no study has focused on understanding the variable case fatality rate between countries. As an example, Italy has reached a CFR of 7% while Germany has a CFR of 0.2%. This widespread difference is striking and here we explore the likely causes for this heterogenety. In our first analysis, we show that the size of the population, the percentage of above 65 adults respect to the total population, and the number of hospital beds per people are the most predictive variables. This study sheds light into how large countries are at a higher risk when the majority of the population is old and there is a limited number of hospital beds. 
+
+## Introduction
+
+- Numbers globally about COVID19 (https://coronavirus.jhu.edu/map.html, https://www.who.int/ through https://ourworldindata.org/coronavirus)
+
+- The origin of the coronavirus (https://www.nature.com/articles/s41591-020-0820-9)
+
+- Study focused on the persistence of the virus in different surfaces ( https://www.nejm.org/doi/10.1056/NEJMc2004973 )
+
+- Model to predict outcome and policy-making strategies (https://www.nature.com/articles/nature04795)
+
+- Lessons from Italy (https://www.thelancet.com/journals/lancet/article/PIIS0140-6736(20)30627-9/fulltext#seccestitle30)
+
+- Candidate targets for immunity (https://www.cell.com/cell-host-microbe/fulltext/S1931-3128(20)30166-9)
+
+## Results
+
+### Analysis of COVID-19 Case fatality rate probable causes across countries
+
+To explore the possible causes behind the different case fatality rates (CFR) observed across countries we performed multiple regression analysis. We downloaded datasets from ourworldindata.org (https://ourworldindata.org/coronavirus), a specilized webiste that put together data from the World Health Organization daily. For the number of hospital beds per country we obtained the data from the API of the worldbank.org on the 15th of March (http://api.worldbank.org/v2/en/indicator/SH.MED.BEDS.ZS?downloadformat=csv).
+
+```{r loading, echo=FALSE,comment=F,message=F,warning=FALSE}
+load(file = "~/Dropbox (Personal)/Projects/CORONA/data/20201903_data.Rdata")
+```
+We first explore different variables that might affect CFR independently. We applied a univariate linear regression of each variables using countries where there are more than 150 cases reported and more than 1 death. 
+
+```{r decidefilters,echo=FALSE,comment=F,message=F,warning=FALSE}
+##Cosnsistently decide filters for all countries
+df.all <- df.all %>% filter(total_cases>150, deaths>1)
+
+df.full.num<- df.all  %>% filter(Country != "World", Country != "International") %>% dplyr::select_if(., is.numeric) %>% dplyr::select(freqdeath, total_cases, deaths, Population, logPop, PopDensity, Old, loga65, Vegetable, Meat, GDP, GDPc, Beds, TotalTestsPM)
+
+df.full.num %>% gtsummary::tbl_summary()
+
+```
+
+We observed that the CFR varies widely across countries, the median and mean CFR among the 32 countries with more than 150 cases and one death was 1.4% and 2.3%, respectively (Table 1). On the extremes, we observed a 7% CFR in Italy versus a 0.2% CFR in Germany. As time progresses these number might fluctuate. We first checked the relationship between the number of cases reported and the CFR in each country. Countries with low number of cases have a less reliable CFR that seems to go down once more cases are detected and then countries with large number of cases have an increasing CFR (Fig 1A). We then observed that CFR was also correlated to the population size of the country, but several exceptions were prominent (Fig 1B). On one hand Italy, Iran, Iraq and the Philipines had more deaths than expected, on the other Germany and Malaysia have fewer. 
+
+```{r Population1, echo=FALSE,comment=F,message=F,warning=FALSE}
+##CFR versus total cases
+p00000<-ggscatter(data = df.all,
+               x="total_cases", 
+               y="freqdeath",
+               add = "loess",
+               color = "Continent",
+                size = "total_cases",
+               label = "Country",
+               repel = T,
+               conf.int = T, 
+               add.params = list(color = "lightblue",
+                            fill = "lightgray")) +
+  theme_classic2()
+
+ggpar(p00000, main = "Fig 1A CFR versus Total Cases", xlab = "Total Cases", ylab = "CFR", xscale = "log10")
+
+##CFR versus population size
+p0000<-ggscatter(data = df.all,
+               x="logPop", 
+               y="freqdeath", 
+               add = "reg.line",
+               color = "Continent",
+                size = "total_cases",
+               label = "Country",
+               repel = T,
+               conf.int = T, 
+               add.params = list(color = "lightblue",
+                            fill = "lightgray")) +
+  stat_cor() +
+  theme_classic2()+ theme(legend.position = "none") 
+
+ggpar(p0000, main = "Fig 1B CFR versus Population size", xlab = "Pop Size (log10)", ylab = "CFR")
+
+```
+
+Next, as reported previously that the older than 65 people (+65) was at more danger, we hypothesized that the proportion of elderly had an infleunce on the reported CFR. Although we did not observe a significant correlation either for the total number of +65 adults (Fig 2A) or the ratio of +65 respect to the total population (Fig 2B), the trend was as expected.  
+
+```{r Oldpeople, echo=FALSE,comment=F,message=F,warning=FALSE}
+
+p0001<-ggscatter(data = df.all,
+               x="loga65", 
+               y="freqdeath", 
+               add = "reg.line",
+               color = "Continent",
+                size = "total_cases",
+               label = "Country",
+               repel = T,
+               conf.int = T, 
+               add.params = list(color = "blue",
+                            fill = "lightgray")) +
+  stat_cor() +
+  theme_classic2()+ theme(legend.position = "none") 
+
+p0002<-ggscatter(data = df.all,
+               x="Old", 
+               y="freqdeath", 
+               add = "reg.line",
+               color = "Continent",
+                size = "total_cases",
+               label = "Country",
+               repel = T,
+               conf.int = T, 
+               add.params = list(color = "blue",
+                            fill = "lightgray")) +
+  stat_cor() +
+  theme_classic2()+ theme(legend.position = "none") 
+
+ggpar(p0001, main = "Fig 2A. CFR versus Population of 65+ years old", xlab = "People of 65+ (log10)", ylab = "CFR")
+
+ggpar(p0002, main = "Fig 2B. CFR versus Ratio of 65+/Total population", xlab = "Ratio of 65+/Total Population", ylab = "CFR")
+
+```
+
+Another interesting variable to look was the GDP per country. Here we found that both total GDP and GDP per capita were significantly negative correlated (Fig 3C and 3D), which is expected given the higher capacity of expenditure of rich countries to increase their helth system when needed. Again the exception were Italy, Iran, Iraq and Phillipines. 
+
+
+```{r GDP, echo=FALSE,comment=F,message=F,warning=FALSE}
+
+p0003<-ggscatter(data = df.all ,
+               x="GDP", 
+               y="freqdeath", 
+               add = "reg.line",
+               color = "Continent",
+                size = "total_cases",               
+               label = "Country",
+               repel = T,
+               conf.int = T, 
+               add.params = list(color = "blue",
+                            fill = "lightgray")) +
+  stat_cor() +
+  theme_classic2()+ theme(legend.position = "none") 
+
+p0004<-ggscatter(data = df.all,
+               x="GDPc", 
+               y="freqdeath", 
+               add = "reg.line",
+               color = "Continent",
+                               size = "total_cases",         
+               label = "Country",
+               repel = T,
+               conf.int = T, 
+               add.params = list(color = "blue",
+                            fill = "lightgray")) +
+  stat_cor() +
+  theme_classic2()+ theme(legend.position = "none") 
+
+ggpar(p0003, main = "Fig 3A. CFR versus GDP", xlab = "GDP", ylab = "CFR")
+
+ggpar(p0004, main = "Fig 3B. CFR versus GDP per capita", xlab = "GDP per capita", ylab = "CFR", xscale = "log10")
+```
+
+To contrast with other variables associated to quality of life or as a surrogate of iron consumption we compared the proportion of Meat consumption per capita and the vegetable consumption index to the CFR (Fig 4A,4B). We found that meat consumption and not vegetable intake was associated but likely because meat consumption is also associated to a higher GDP (Supp. Fig. 1).
+
+```{r food_consumption, echo=FALSE,comment=F,message=F,warning=FALSE}
+p0005<-ggscatter(data = df.all,
+               x="Meat", 
+               y="freqdeath", 
+               add = "reg.line",
+               color = "Continent",
+               label = "Country",
+                               size = "total_cases",         
+               repel = T,
+               conf.int = T, 
+               add.params = list(color = "blue",
+                            fill = "lightgray")) +
+  stat_cor() +
+  theme_classic2()+ theme(legend.position = "none") 
+
+ggpar(p0005, main = "Fig 4A. CFR versus Meat Consumption", xlab = "Meat Consumption", ylab = "CFR")
+
+p0006<-ggscatter(data = df.all,
+               x="Vegetable", 
+               y="freqdeath", 
+               add = "reg.line",
+               color = "Continent",
+                               size = "total_cases",         
+               label = "Country",
+               repel = T,
+               conf.int = T, 
+               add.params = list(color = "blue",
+                            fill = "lightgray")) +
+  stat_cor() +
+  theme_classic2()+ theme(legend.position = "none") 
+
+ggpar(p0006, main = "Fig 4B. CFR versus Vegetable Intake", xlab = "Vegetable Intake", ylab = "CFR")
+
+ggstatsplot::ggscatterstats(data = df.all,
+                            x="Meat",
+                            y="GDP",
+                            marginal = F,label.var = Country, title = "Supp Fig 1") +theme_classic2()
+
+```
+
+We also check if there is an association between number of hospital beds to the CFR of COVID-19. Surprisingly, we found no direct correlation between these measures when looking independently (Fig 5A, 5B). We observed that the number of hospital bed strongly correlates with the number of intensive care unit beds (Supp Fig 2), and given we had more information on the number of total beds, we used this parameter for the regression analysis.
+
+```{r beds_tests,  echo=FALSE,comment=F,message=F,warning=FALSE}
+p0016<-ggscatter(data = df.all,
+               x="Beds", 
+               y="freqdeath", 
+               add = "reg.line",
+               color = "Continent",
+               label = "Country",
+                               size = "total_cases",         
+               repel = T,
+               conf.int = T, 
+               add.params = list(color = "blue",
+                            fill = "lightgray")) +
+  stat_cor() +
+  theme_classic2()+ theme(legend.position = "none") 
+
+ggpar(p0016, main = "Fig 5A. CFR versus hospital Beds", xlab = "Number of beds per 10K ", ylab = "CFR")
+
+p0017<-ggscatter(data = df.all,
+               x="ICU_beds", 
+               y="freqdeath", 
+               add = "reg.line",
+               color = "Continent",
+               label = "Country",
+                               size = "total_cases",         
+               repel = T,
+               conf.int = T, 
+               add.params = list(color = "blue",
+                            fill = "lightgray")) +
+  stat_cor() +
+  theme_classic2()+ theme(legend.position = "none") 
+
+ggpar(p0017, main = "Fig 5B. CFR versus ICU hospital Beds", xlab = "Number of beds per 10K ", ylab = "CFR")
+
+ggscatterstats(data = df.all, 
+               x=Beds, 
+               y=ICU_beds,
+               marginal = F,label.var = Country, title = "Supp Fig 2") +theme_classic2()
+```
+
+A lot of speculation has been placed in the importance of testing, thus we also explored this variable and found no association between the variable and the number of total tests performed per million inhabitants (Fig 6A). However, if we remove Italy there is a significant correlation between this variable and CFR (Supp Fig 3).  
+
+```{r testing, echo=FALSE,comment=F,message=F,warning=FALSE}
+
+p0018<-ggscatter(data = df.all,
+               x="TotalTestsPM", 
+               y="freqdeath", 
+               add = "reg.line",
+               color = "Continent",
+              size = "total_cases",         
+               label = "Country",
+               repel = T,
+               conf.int = T, 
+               add.params = list(color = "blue",
+                            fill = "lightgray")) +
+  stat_cor() +
+  theme_classic2()+ theme(legend.position = "none") 
+
+ggpar(p0018, main = "Fig 6A. CFR versus TotalTests", xlab = "Total tests per million ", ylab = "CFR")
+
+ggstatsplot::ggscatterstats(data = df.all %>% filter(Country != "Italy"),
+                            x="TotalTestsPM",
+                            y="freqdeath",
+                            marginal = F,label.var = Country, title = "Supp Fig 3") +theme_classic2()
+
+
+```
+
+
+Now, understanding that CFR is a multifactorial process, we performed a multivariate regression analysis to determine the best predictors of CFR with the current available data. We first checked for colinearity of all predicted variables by plotting a multi correlation (Fig. 7). To select for the best model, we perform multiple regression using different subset of the independent variables. We then selected the one with the lowest AIC. 
+By looking at the performance of all different models we observed that the best model had an R2 adjusted of 0.48 and AIC of -106. This model included the population size, the proportion of 65+ adults respect to the rest of the population, the GDP per capita, and the number of hospital beds (Fig. 8). The final model then was CFR = 0.029*(log10(Populatio)) + 0.34*(GDP per capita) + 0.33*(65+/65- population) - 0.0044*(Number of hospital beds).
+
+```{r plotting1_modeling, echo=FALSE,comment=F,message=F,warning=FALSE}
+
+df.full.num<- df.all  %>% filter(Country != "World", Country != "International") %>% dplyr::select_if(., is.numeric) %>% dplyr::select(freqdeath, total_cases, deaths, Population, logPop, PopDensity, Old, loga65, Vegetable, Meat, GDP, GDPc, Beds, TotalTestsPM)
+
+##Correlation 2
+df.full.num_filt <- df.full.num[complete.cases(df.full.num),]
+p1<-quickcor(df.full.num_filt, cor.test = T) + geom_circle2(data = get_data(type = "lower", show.diag = FALSE)) + geom_mark(data = get_data(type = "upper", show.diag = FALSE), size = 2.5)+geom_abline(slope = -1, intercept = 15)
+
+ggpar(p1, main = "Fig 7. Correlation of all tested variables")
+
+```
+
+```{r plotting2_modeling, echo=FALSE,comment=F,message=F,warning=FALSE}
+fit <- glm(freqdeath ~  Population + logPop + PopDensity + Old + loga65 + Vegetable + Meat + GDP + GDPc + Beds ,data = df.full.num) 
+
+##All variables check AIC
+fit2 <- glm(freqdeath ~  logPop + PopDensity + Old + Vegetable + Meat + GDPc + Beds, data = df.full.num)
+#summary(fit2)
+
+##All variables check AIC
+fit3 <- glm(freqdeath ~  logPop + PopDensity + Old + GDPc + Beds,data = df.full.num)
+#summary(fit3)
+
+##All variables check AIC
+fit4 <- glm(freqdeath ~ Beds + Old  + GDPc + logPop  ,data = df.full.num)
+#summary(fit4)
+
+##All variables check AIC
+fit5 <- lm(freqdeath ~ Beds + Old  + GDPc + logPop  ,data = df.full.num)
+#summary(fit5)
+##All variables check AIC
+fit6 <- glm(freqdeath ~ Beds + Old + logPop,data = df.full.num)
+#summary(fit6)
+
+p2<-plot_models(fit, fit2, fit3, fit4, fit6, grid = TRUE, show.p = T,p.shape = T,std.est = "std") + theme_classic2()
+
+ggpar(p2, main = "Fig 8. Coefficient estimates and significance value for each variable")
+
+```
+## Discussion
+
+Here we have presented an up to date analysis (March 19th) of the likely factors contributing to the difference of case fatality rate (CFR) observed across countries during the SARS-CoV-2 pandemic outbreak. We performed multiple comparisons of different variables that can explain CFR. We identified four factors including the population size of the country, the proportion of elderly people, the GDP per capita and the number of hospital beds per country that explain CFR. Given that the first three can not be modify in the short term, we propose that the number of available beds, specifically the number of intensive care unit bebds, should be increase as soon as possible to tackle the current pandemic. As an example for our model, if we increase the current value in spain from 3 beds per 1000 people to 4 beds per 1000 people, we can reduce the CFR from an estimated of 3.3% to 2.9%, a 0.3% difference that can save the lives of approximately 50 people out of the currently confirmed cases of ~18000 people. 
